@@ -28,6 +28,9 @@ per-cycle efficiency noise σ from 0 to 0.1 and the same experiment at AE = 0.8.
 | `sweep.jl` | `julia -t auto sweep.jl mu sigmax nsteps nsamples seed outdir` – σ sweep in one process |
 | `plot_cq.py` | static three-panel figures (σ = 0, σ = 0.1 clip, σ = 0.1 extend) |
 | `animate_cq.py` | σ-sweep animation (mp4 + gif) and the filmstrip |
+| `paper_protocol.jl` | exact re-implementation of the authors' MATLAB protocol |
+| `plot_paper_protocol.py` | plots it with the authors' binning and smoothing |
+| `noise_bound.jl` | scans the noise level in that protocol to find when peaks vanish |
 | `figures/` | outputs (2×10⁵ runs per static panel, 10⁵ per animation frame) |
 
 Reproduce everything (about 5 minutes on 4 cores):
@@ -66,11 +69,9 @@ Peak 1 is "no early failure", peaks 2, 3, 4 are one failure at cycle 3, 2, 1:
 The weights follow too: peak 4 carries `1 − AE = 4.1 %` of the runs, peak 3 about
 `2 AE (1−AE) = 7.9 %`, etc.
 
-**Absolute position does not match.** With `N_0 = 1`, threshold `2^38` and this
-Cq definition the main peak sits at Cq ≈ 39.04 (mean 39.19), not 38.21. The
-deterministic estimate is `38 / log2(1.959) = 39.17`, so 38.21 would need either a
-threshold near `2^37.1` or a different cycle-counting convention in the paper; the
-peak spacings are insensitive to this, the offset is not.
+**Absolute position.** With threshold `2^38` the main peak sits at Cq ≈ 39.04, not 38.21.
+The authors' code uses the threshold `(1.959)^38.34 ≈ 2^37.2` instead (see below), which
+accounts for the whole 0.8-cycle offset.
 
 **Noise.** A per-cycle Gaussian `AE ± σ` adds `σ / ((1+AE) ln 2)` to the standard
 deviation of `log2 N` per cycle, i.e. a Cq standard deviation of about `4.7 σ` over
@@ -86,12 +87,8 @@ the ~39 cycles. That smears the Δ = 0.2 and 0.4 peaks first and the Δ = 1.0 pe
   clipped (`E[min(p,1)] = 0.936`); with `extend` the shift disappears but the width is
   the same.
 
-So the paper's panel b (main peak barely shifted, std ≈ 0.15, a distinct bump one cycle
-later) corresponds to an effective per-cycle σ of about 0.02–0.03, not 0.1: a literal
-`N(0.959, 0.1)` per cycle overshoots it by a factor of ~4 in width. Either their "± 0.1"
-is not a one-sigma per-cycle Gaussian, or the noise is applied differently. The
-animation `figures/cq_sigma_sweep.gif` / `.mp4` sweeps σ from 0 to 0.1 in steps of
-0.0025.
+A literal per-cycle `N(0.959, 0.1)` is therefore much broader than the paper's
+panel b. The authors' code explains why: see the next section.
 
 ![AE = 0.8](figures/fig_cq_0.8.png)
 
@@ -101,3 +98,50 @@ distribution is a broad mixture: the main peak at Cq ≈ 44.4 with peaks 2–4 a
 Δ = 0.23, 0.49, 1.18 appearing as shoulders rather than separate peaks, and a
 two-failure tail beyond. The intrinsic width (std 0.72) is already larger than the
 noise-induced width at σ = 0.1 (total std 0.95), so ± 0.1 only rounds the shape off.
+
+## The authors' exact protocol
+
+Source: `FigS3B_SimSingleDnaRandomE.m`, `FigS3B_GenerateNormalData.m` and
+`Fig1D_SimSingleDnaPCR.m` in github.com/Azuresky99/quPCR. It differs from the model
+above in three ways:
+
+1. **"± 0.1" is the half-width of a 95 % interval.** `devE = 0.2`, passed as
+   `devE/2 = 0.1` with `confidence_level = 0.95`, so `σ = 0.1 / 1.96 = 0.051`.
+   The mean is `AE = 0.9593` (the supplement's text says 0.95; the code uses 0.9593).
+2. **Noise acts only in the stochastic stage.** Cycles 1–20 are simulated
+   (19 binomial doublings, one efficiency draw per tube and per cycle, a molecule replicates
+   if `rand <= e_n - 1`, so `p` is clipped to `[0,1]`). After that,
+   `Cq = log(T/N_20)/log(1+AE) + 19` with fixed AE, so cycles 21–38 carry no noise.
+3. **Threshold `T = (1+AE)^quCq` with `quCq = 38.34`** (38.335 in the S3B script),
+   tuned by hand so that the simulated mode lands on the measured CqP = 38.21.
+
+`paper_protocol.jl` re-implements this and reproduces both panels (10⁶ runs each):
+
+![authors' protocol](figures/fig_paper_protocol.png)
+
+| | simulated CqP | paper CqP |
+|---|---|---|
+| AE = 0.959 | 38.22 | 38.21 |
+| AE = 0.959 ± 0.1 (95 %), noise in cycles 1–20 | 38.32 | 38.31 |
+| same, noise in every cycle | 38.43 | not in paper |
+
+## What Fig. S3B actually shows: an upper bound on AE noise
+
+S3B tests a single noise level, so it rules out that level, not every level. Scanning
+σ in the authors' protocol (`noise_bound.jl`, 3×10⁵ runs per point, 0.15-cycle smoothing
+as used for the experimental Fig. 1C) gives the largest per-cycle σ at which each
+peak is still a separate local maximum:
+
+| peak (offset from peak 1) | noise in cycles 1–20 only | noise in every cycle |
+|---|---|---|
+| peak 3 (+0.39) | σ ≈ 0.010 | σ ≈ 0.0075 |
+| peak 4 (+1.0)  | above 0.05 | about 0.045 |
+
+Peak 2 is only a shoulder even at σ = 0. Since peak 3 is resolved in the experimental
+histogram, the data bound well-independent per-cycle AE fluctuations to σ ≲ 0.01,
+i.e. a 95 % range of about ±0.02 around 0.959. The claim that "no physically plausible
+degree of efficiency fluctuation" is compatible is stronger than what the figure shows.
+The paper's other argument, high-copy Cq SD ≈ 0.03 cycles, gives the same order:
+`σ ≲ 0.03 / (0.759 √20) ≈ 0.009`. Both bounds only apply to fluctuations that differ
+from well to well. A fluctuation shared by every well on a plate shifts that plate's
+whole histogram and does not broaden it.
