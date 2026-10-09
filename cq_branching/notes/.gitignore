@@ -1,0 +1,7 @@
+paper_FigS3.pdf
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+build.log

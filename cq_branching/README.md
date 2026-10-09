@@ -1,5 +1,8 @@
 # Cq distribution of a single-molecule PCR branching process
 
+A compiled summary of everything below, including the AE = 0.8 noise scan and a likelihood
+fit to the authors' experimental data, is in `notes/cq_noise_notes.pdf` (source `notes/cq_noise_notes.tex`).
+
 Reproduction of the "four peaks at AE = 0.959, two peaks at AE = 0.959 ± 0.1" claim
 (Tang et al., Fig. S3) with a Galton–Watson simulation in Julia, plus a sweep of the
 per-cycle efficiency noise σ from 0 to 0.1 and the same experiment at AE = 0.8.
@@ -30,7 +33,12 @@ per-cycle efficiency noise σ from 0 to 0.1 and the same experiment at AE = 0.8.
 | `animate_cq.py` | σ-sweep animation (mp4 + gif) and the filmstrip |
 | `paper_protocol.jl` | exact re-implementation of the authors' MATLAB protocol |
 | `plot_paper_protocol.py` | plots it with the authors' binning and smoothing |
-| `noise_bound.jl` | scans the noise level in that protocol to find when peaks vanish |
+| `noise_scan.jl` | σ scan in the authors' protocol, any AE, same physical threshold |
+| `analyze_scan.py` | side-peak visibility vs σ |
+| `extract_exp.py`, `fit_sigma.py` | authors' experimental Cq data and the likelihood fit of σ |
+| `wells_needed.py` | wells needed to exclude σ at 95 % |
+| `plot_scan.py` | figures for the scan, the fit and the wells estimate |
+| `notes/` | LaTeX summary of all figures (`cq_noise_notes.pdf`) |
 | `figures/` | outputs (2×10⁵ runs per static panel, 10⁵ per animation frame) |
 
 Reproduce everything (about 5 minutes on 4 cores):
@@ -58,16 +66,17 @@ duplication at cycle `k` (one of `2^(k-1)` particles) delays the whole trajector
 
     Δ_k = log2( 2^k / (2^k − 1) ) / log2(1 + AE)
 
-Peak 1 is "no early failure", peaks 2, 3, 4 are one failure at cycle 3, 2, 1:
+Peak 1 is "no early failure", peaks 2, 3, 4 are one failure at cycle 3, 2, 1.
+Peak 4 is exactly one cycle late: a failure in cycle 1 restarts the process one cycle later,
+so `P(Cq) = AE P(Cq | N_1 = 2) + (1-AE) P(Cq - 1)`. The `Δ_k` formula is approximate for k = 2, 3:
 
-| | sim. offset | Δ_k (AE = 0.959) | paper (read off Fig. S3a) |
+| | simulated offset | Δ_k (AE = 0.959) | paper (read off Fig. S3a) |
 |---|---|---|---|
-| peak 2 (k = 3) | +0.20 | 0.199 | ≈ +0.2 |
-| peak 3 (k = 2) | +0.43 | 0.428 | ≈ +0.4 |
-| peak 4 (k = 1) | +1.03 | 1.031 | ≈ +1.0 |
+| peak 2 (k = 3) | shoulder | 0.199 | shoulder near +0.2 |
+| peak 3 (k = 2) | +0.39 (smoothed) | 0.428 | ≈ +0.4 |
+| peak 4 (k = 1) | +1.000 | 1.031 | ≈ +1.0 |
 
-The weights follow too: peak 4 carries `1 − AE = 4.1 %` of the runs, peak 3 about
-`2 AE (1−AE) = 7.9 %`, etc.
+The weights follow too: peak 4 carries `1 − AE = 4.1 %` of the runs.
 
 **Absolute position.** With threshold `2^38` the main peak sits at Cq ≈ 39.04, not 38.21.
 The authors' code uses the threshold `(1.959)^38.34 ≈ 2^37.2` instead (see below), which
@@ -127,21 +136,18 @@ above in three ways:
 
 ## What Fig. S3B actually shows: an upper bound on AE noise
 
-S3B tests a single noise level, so it rules out that level, not every level. Scanning
-σ in the authors' protocol (`noise_bound.jl`, 3×10⁵ runs per point, 0.15-cycle smoothing
-as used for the experimental Fig. 1C) gives the largest per-cycle σ at which each
-peak is still a separate local maximum:
+Fig. S3B tests one noise level, so it bounds the per-cycle fluctuation rather than excluding it.
+Details, figures and the AE = 0.8 comparison are in `notes/cq_noise_notes.pdf`. In short:
 
-| peak (offset from peak 1) | noise in cycles 1–20 only | noise in every cycle |
-|---|---|---|
-| peak 3 (+0.39) | σ ≈ 0.010 | σ ≈ 0.0075 |
-| peak 4 (+1.0)  | above 0.05 | about 0.045 |
-
-Peak 2 is only a shoulder even at σ = 0. Since peak 3 is resolved in the experimental
-histogram, the data bound well-independent per-cycle AE fluctuations to σ ≲ 0.01,
-i.e. a 95 % range of about ±0.02 around 0.959. The claim that "no physically plausible
-degree of efficiency fluctuation" is compatible is stronger than what the figure shows.
-The paper's other argument, high-copy Cq SD ≈ 0.03 cycles, gives the same order:
-`σ ≲ 0.03 / (0.759 √20) ≈ 0.009`. Both bounds only apply to fluctuations that differ
-from well to well. A fluctuation shared by every well on a plate shifts that plate's
-whole histogram and does not broaden it.
+* **Peak survival (AE = 0.959).** The four-peak structure returns for σ ≲ 0.006–0.011
+  (peak 3 at +0.39). Peak 4 at +1.00 survives to σ ≈ 0.04, or beyond 0.05 with noise
+  only in cycles 1–20.
+* **The experiment cannot see peak 3.** The authors' data have 297 single-copy wells. At that
+  size a spurious maximum near peak 3 appears in 74 % of samples drawn at σ = 0.02, where no
+  peak 3 exists; separating the two needs about 10⁴ wells.
+* **Likelihood fit to the authors' data** (`fit_sigma.py`): 95 % bound σ ≲ 0.02–0.036,
+  robust to a measurement noise of 0–0.06 cycles. The S3B noise (σ = 0.051) is excluded.
+* **AE = 0.8.** The side peaks are shoulders already at σ = 0, so there are no peaks to return
+  to. Noise only adds width to an intrinsic std of 0.72, and excluding a given σ takes
+  10–30× more wells than at AE = 0.959.
+* Fluctuations shared by all wells of a plate are not constrained by any of this.

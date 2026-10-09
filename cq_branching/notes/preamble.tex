@@ -1,0 +1,25 @@
+% preamble.tex
+\usepackage{amsmath, amssymb, amsthm, graphicx, mathrsfs}
+\usepackage[utf8]{inputenc}
+\usepackage{braket}              % defines \ket, \bra, \braket, etc.
+\usepackage{mathtools} % gives \lVert and \rVert if not already loaded
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{bbm}
+
+
+\newcommand{\id}{\mathbbm{1}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\p}[1]{\left( #1 \right)}
+\newcommand{\br}[1]{\left[ #1 \right]}
+\newcommand{\cbr}[1]{\left\{ #1 \right\}}
+\newcommand{\pr}{^\prime}
+\newcommand{\E}[1]{\left\langle #1 \right\rangle}
+
+\newcommand{\YL}[1]{\textsf{\color{ForestGreen} (YL: #1)}}
+\newcommand{\YS}[1]{\textsf{\color{RoyalBlue} (YS: #1)}}
+
+% Define theorem-like environments
+\newtheorem{theorem}{Theorem}[section] % Theorem environment with section numbering
+\newtheorem{lemma}[theorem]{Lemma}     % Lemma shares the same counter as Theorem
+\newtheorem{definition}[theorem]{Definition} % Definition also shares the same counter

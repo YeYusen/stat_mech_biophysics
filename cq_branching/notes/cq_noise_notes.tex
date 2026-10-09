@@ -1,0 +1,379 @@
+\documentclass[11pt]{article}
+\PassOptionsToPackage{dvipsnames}{xcolor}   % RoyalBlue/ForestGreen used by \YS, \YL
+\input{preamble}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage[section]{placeins}   % keep floats inside their section
+\usepackage{caption}
+\usepackage[colorlinks=true, linkcolor=RoyalBlue, urlcolor=RoyalBlue, citecolor=RoyalBlue]{hyperref}
+\captionsetup{font=small, labelfont=bf}
+
+\newcommand{\AEf}{\mathrm{AE}}
+\newcommand{\Cq}{\mathrm{Cq}}
+\newcommand{\figdir}{../figures}
+
+\title{Single-molecule PCR as a branching process:\\
+reproducing the quPCR Fig.~S3 and bounding the per-cycle AE noise}
+\author{Yusen Ye}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We simulate the single-molecule Cq distribution of quantitative PCR as a Galton--Watson process
+with per-cycle duplication probability $\AEf$, first with a literal reading of the quPCR
+supplementary Fig.~S3 and then with the authors' own code. The authors' protocol reproduces
+both published panels (CqP $=38.22$ and $38.32$ against $38.21$ and $38.31$). The four-peak
+structure is a frozen record of the first three cycles; per-cycle efficiency noise smears it
+diffusively with width $s_\eta\simeq\sigma\sqrt{n}/[(1+\AEf)\ln(1+\AEf)]$, so Fig.~S3B tests a
+single noise level and sets an upper bound rather than excluding fluctuations. At small
+$\sigma$ the four peaks return: peak~3 survives for $\sigma\lesssim0.006$--$0.011$ and peak~4
+for $\sigma\lesssim0.04$ ($\AEf=0.959$). A likelihood fit to the authors' 297 single-copy wells
+gives $\sigma\lesssim0.02$--$0.036$ (95\%), robust to the assumed measurement noise. At
+$\AEf=0.8$ the early-failure probability is five times larger and the side peaks are already
+merged at $\sigma=0$; there are no peaks to return to, and bounding $\sigma$ takes
+$10$--$30\times$ more wells.
+\end{abstract}
+
+\tableofcontents
+
+%======================================================================
+\section{Model and notation}
+%======================================================================
+
+Each run starts from one single-stranded template, $N_0=1$. In cycle $n$ every molecule
+independently duplicates with probability $p_n$,
+\begin{equation}
+\begin{aligned}
+    N_n &= N_{n-1} + \mathrm{Bin}\p{N_{n-1},\,p_n}, \\
+    p_n &= \AEf + \sigma\,\xi_n, \qquad \xi_n\sim\mathcal N(0,1)\ \text{i.i.d. in } n,
+\end{aligned}
+\label{eq:model}
+\end{equation}
+with one draw of $p_n$ per cycle and per run, shared by all molecules of that run. When $p_n$
+leaves $[0,1]$ it is clipped (the authors' code does this implicitly: a molecule replicates if
+a uniform number is $\le p_n$). $\Cq$ is the cycle at which $N_n$ first reaches a threshold
+$T$, with log-linear interpolation between cycles. We use two readings of Fig.~S3.
+
+\begin{definition}[Literal reading]
+$T=2^{38}$, the recursion~\eqref{eq:model} runs until threshold, and ``$\AEf=0.959\pm0.1$'' means
+$\sigma=0.1$ in every cycle.
+\end{definition}
+
+\begin{definition}[Authors' protocol]
+From the authors' MATLAB scripts for Fig.~1D and Fig.~S3B
+(\url{https://github.com/Azuresky99/quPCR}):
+\begin{enumerate}
+    \item ``$\pm0.1$'' is the half-width of a 95\% interval, $\sigma=0.1/1.96=0.051$, with mean
+          $\AEf=0.9593$.\YS{the supplement text says mean 0.95; the code uses 0.9593}
+    \item Only 19 cycles are stochastic. Afterwards
+          $\Cq=\log\p{T/N_{20}}/\log(1+\AEf)+19$ at fixed $\AEf$, so cycles 21--38 carry no noise.
+    \item $T=(1+\AEf)^{\mathrm{quCq}}$ with $\mathrm{quCq}=38.34$, tuned by hand until the
+          simulated mode equals the measured $\mathrm{CqP}=38.21$. This is $T\approx2^{37.2}$.
+\end{enumerate}
+\end{definition}
+
+All runs use only the Julia standard library: the binomial is sampled exactly for
+$N\le2^{16}$ (geometric jumps over the rarer outcome) and by a Gaussian above.
+
+%======================================================================
+\section{Why there are peaks}
+%======================================================================
+
+Once $N$ is large the binomial noise is suppressed as $N^{-1/2}$ and growth is deterministic,
+$N_n\simeq W(1+\AEf)^n$ with $W$ the martingale limit of the Galton--Watson process. Hence
+\begin{equation}
+    \Cq \simeq \log_{1+\AEf}T - \log_{1+\AEf}W ,
+\end{equation}
+and the shape of the Cq distribution is the law of $\log W$, which is fixed during the first
+few cycles. Its sharp features are single missed duplications.
+
+\paragraph{Peak 4 is exactly one cycle late.} If the template fails in cycle~1, the process
+restarts one cycle later, so the density obeys the renewal relation
+\begin{equation}
+    P(\Cq) = \AEf\,P\p{\Cq \mid N_1=2} + \p{1-\AEf}\,P\p{\Cq-1}.
+\end{equation}
+Peak~4 is the main peak shifted by exactly $+1$, with weight $1-\AEf=4.1\%$; the simulations
+give $+1.000$ in both readings.
+
+\paragraph{Peaks 2 and 3.} One failure among the $2^{k-1}$ molecules of cycle $k$ lowers $W$ by
+the factor $(2^k-1)/2^k$, i.e.\ a delay
+\begin{equation}
+    \Delta_k \approx \frac{\ln\br{2^k/(2^k-1)}}{\ln(1+\AEf)} ,
+\end{equation}
+which gives $\Delta_3\approx0.20$ (peak~2) and $\Delta_2\approx0.43$ (peak~3) at $\AEf=0.959$.
+After smoothing, peak~3 sits at $+0.39$ and peak~2 is only a shoulder. A fifth local
+maximum at $+1.39$ is the copy of peak~3 inside peak~4.
+
+%======================================================================
+\section{Why noise gives one peak: diffusive smearing}
+%======================================================================
+
+The binomial noise averages out as $N^{-1/2}$; the efficiency noise does not, because one
+$p_n$ is shared by all molecules. Then $\ln N_n$ is a random walk with increments $\ln(1+p_m)$
+for every noisy cycle, and the first-passage time through $\ln T$ acquires a Gaussian spread
+\begin{equation}
+\begin{aligned}
+    \Cq &\simeq \Cq_0 + \Delta_{\text{early}} + \eta, \\
+    s_\eta^2 &= n_\text{noise}\,c(\AEf)^2\,\sigma^2, \qquad c(\AEf)=\frac{1}{(1+\AEf)\ln(1+\AEf)},
+\end{aligned}
+\label{eq:seta}
+\end{equation}
+with $c(0.959)=0.759$ and $c(0.8)=0.945$. The Cq histogram is the comb of early-time peaks
+convolved with a Gaussian of width $s_\eta$, and $\mathrm{Var}(\Cq)=\mathrm{Var}_0+s_\eta^2$.
+Table~\ref{tab:var} checks this in the literal reading ($n_\text{noise}\simeq39$, so
+$s_\eta=4.75\,\sigma$).
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}ccccc@{}}
+\toprule
+$\sigma$ & $s_\eta$ & predicted std & simulated std \\
+\midrule
+0.02 & 0.095 & 0.286 & 0.287 \\
+0.04 & 0.190 & 0.330 & 0.327 \\
+0.06 & 0.285 & 0.393 & 0.380 \\
+0.10 & 0.475 & 0.547 & 0.499 \\
+\bottomrule
+\end{tabular}
+\caption{Variance additivity, literal reading, $\AEf=0.959$, $\mathrm{std}_0=0.270$. The
+simulated width falls below the prediction at large $\sigma$ because clipping at $p=1$ trims
+the noise.}
+\label{tab:var}
+\end{table}
+
+A side peak of weight $w$ at distance $d$ from a dominant one survives as a separate maximum
+only if $d/s_\eta$ exceeds $2.0$ ($w=0.5$), $3.3$ ($w=0.1$) or $3.6$ ($w=0.05$). At
+$\sigma=0.1$, $s_\eta\approx0.47$ exceeds every spacing, so only one peak is left.
+
+%======================================================================
+\section{Literal reading: results}
+%======================================================================
+
+\IfFileExists{paper_FigS3.pdf}{
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{paper_FigS3.pdf}
+\caption{Published Fig.~S3 of the quPCR supplement, for comparison: (a) $\AEf=0.959$, four
+peaks, CqP $=38.21$; (b) $\AEf=0.959\pm0.1$, two broad peaks, CqP $=38.31$.}
+\label{fig:paper}
+\end{figure}}{}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_cq_0.959.png}
+\caption{Literal reading, $\AEf=0.959$, $2\times10^5$ runs per panel. (a) Fixed $\AEf$: four
+peaks, main peak at $39.04$. (b) $\sigma=0.1$ every cycle, $p$ clipped at 1: one broad peak,
+std $0.50$, shifted late by $0.7$ because $\E{\min(p,1)}=0.936$. (c) Same, but $p>1$ gives
+extra copies: no shift, same width.}
+\label{fig:literal959}
+\end{figure}
+
+The shape of panel (a) matches the paper; the absolute position is $0.83$ cycles late because
+$T=2^{38}$ instead of $2^{37.2}$. Panels (b,c) are far broader than the published panel (b):
+the deterministic estimate $s_\eta=0.47$ explains the single peak.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/cq_sigma_filmstrip.png}
+\caption{Literal reading, $\sigma$ swept from 0 to 0.1, $10^5$ runs per panel. Top
+$\AEf=0.959$, bottom $\AEf=0.8$. The full sweep in steps of 0.0025 is
+\texttt{figures/cq\_sigma\_sweep.gif} and \texttt{.mp4}.}
+\label{fig:filmstrip}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_cq_0.8.png}
+\caption{Literal reading, $\AEf=0.8$. The side peaks are shoulders already at $\sigma=0$
+(failure probability $20\%$ in cycle~1), and the intrinsic width (std $0.72$) exceeds the
+noise contribution at $\sigma=0.1$ (total std $0.95$).}
+\label{fig:literal08}
+\end{figure}
+
+%======================================================================
+\section{Authors' protocol: exact reproduction}
+%======================================================================
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_paper_protocol.png}
+\caption{Authors' protocol, $10^6$ runs, binning and smoothing as in their scripts. (a)
+$\AEf=0.959$; (b) $\AEf=0.9593$, $\sigma=0.051$ in cycles 1--20; (c) the same noise in every
+cycle, which the authors' code omits.}
+\label{fig:protocol}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+ & CqP (sim.) & CqP (paper) & std \\
+\midrule
+$\AEf=0.959$ & 38.22 & 38.21 & 0.270 \\
+$\AEf=0.959\pm0.1$ (95\%), noise in cycles 1--20 & 38.32 & 38.31 & 0.320 \\
+same, noise in every cycle & 38.43 & -- & 0.352 \\
+\bottomrule
+\end{tabular}
+\caption{Reproduction of Fig.~S3. With $n_\text{noise}=19$ and $\sigma=0.051$,
+Eq.~\eqref{eq:seta} gives $s_\eta=0.17$, which leaves peak~4 standing.}
+\label{tab:protocol}
+\end{table}
+
+%======================================================================
+\section{Noise scan: when do the four peaks return?}
+%======================================================================
+
+We scan $\sigma\in[0,0.05]$ in steps of $0.0025$ in the authors' protocol, $5\times10^5$ runs
+per point, with the authors' experimental smoothing (Gaussian window of 0.15 cycles). Both
+$\AEf$ values use the same physical threshold $T=1.959^{38.34}$ copies, so
+$\mathrm{quCq}(0.8)=43.86$. The visibility of a side peak is
+$V=(\text{max}-\text{dip})/\text{max}$, set to zero when there is no local maximum.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_scan_0.959.png}
+\caption{$\AEf=0.959$, authors' protocol. Top: noise in cycles 1--20; bottom: noise in every
+cycle. The four-peak structure is back for $\sigma\lesssim0.005$--$0.01$.}
+\label{fig:scan959}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_scan_0.8.png}
+\caption{$\AEf=0.8$, authors' protocol, same layout. Even at $\sigma=0$ there is a single skewed maximum at $\Cq=43.56$
+($\mathrm{quCq}=43.86$); the side peaks at $+0.23$, $+0.49$ and $+1.00$ are shoulders, and the
+noise only widens the hump.
+}
+\label{fig:scan08}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.65\textwidth]{\figdir/fig_visibility.png}
+\caption{Side-peak visibility against $\sigma$. Solid: noise in cycles 1--20 (authors);
+dashed: noise in every cycle.}
+\label{fig:visibility}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}llcc@{}}
+\toprule
+$\AEf$ & side peak (offset) & noise in cycles 1--20 & noise in every cycle \\
+\midrule
+0.959 & peak 3 ($+0.39$) & $\sigma_c\approx0.011$ & $\sigma_c\approx0.006$ \\
+0.959 & peak 4 ($+1.00$) & $>0.05$ & $\approx0.04$ \\
+0.8 & peaks 2--4 & \multicolumn{2}{c}{no separate maxima, even at $\sigma=0$} \\
+\bottomrule
+\end{tabular}
+\caption{Largest $\sigma$ at which each side peak is still a separate maximum. $\sigma=0$
+visibilities at $\AEf=0.959$: peak~3 $0.08$, peak~4 $0.89$.}
+\label{tab:sigmac}
+\end{table}
+
+\paragraph{$\AEf=0.8$: no peaks to return to.} Early failures are five times more likely
+($1-\AEf=20\%$ in cycle~1, and one of two molecules fails in cycle~2 with probability
+$2\AEf(1-\AEf)=32\%$), so the teeth of the comb carry comparable weights at spacings $0.23$ and
+$0.49$, below their own widths. The distribution is a single skewed hump at every $\sigma$
+(Fig.~\ref{fig:scan08}), and $\sigma$ enters only through the width. Eq.~\eqref{eq:seta} with
+$c(0.8)=0.945$ predicts std $0.746$ ($\sigma=0.05$, $n_\text{noise}=19$) and $0.782$
+($n_\text{noise}=44$), against simulated $0.739$ and $0.781$ from $\mathrm{std}_0=0.717$.
+Since $\mathrm{std}_0$ is $2.7\times$ larger than at $\AEf=0.959$ and there are no sharp
+features, the same $\sigma$ is much harder to detect (Fig.~\ref{fig:wells}).
+
+
+%======================================================================
+\section{What the experiment bounds}
+%======================================================================
+
+\paragraph{Peak 3 is not resolvable with $\sim$300 wells.} The authors' data
+(\texttt{ExtremeDiluteR.xlsx}) contain 690 positive wells, of which 297 are single-copy
+($38.07\le\Cq\le39.5$). Bootstrapping $N$ wells from the $\sigma=0$ simulation, a local maximum
+near peak~3 appears in $86\%$ of draws at $N=300$, but also in $74\%$ of draws from
+$\sigma=0.02$, where no peak~3 exists. The two are separated only at $N\sim10^4$ ($99\%$
+against $0\%$). The peak-counting criterion $\sigma\lesssim0.01$ is therefore not supported by
+the data.
+
+\paragraph{Likelihood fit.} For each $\sigma$ the model density (5$\times10^5$ runs) is
+convolved with Gaussian measurement noise, shifted by a free offset that absorbs quCq,
+truncated to the window and renormalised. Profiling the offset gives
+Table~\ref{tab:fit} and Fig.~\ref{fig:fit}.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+ & \multicolumn{2}{c}{noise in cycles 1--20} & \multicolumn{2}{c}{noise in every cycle} & \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+measurement sd & best $\sigma$ & 95\% bound & best $\sigma$ & 95\% bound & $\Delta(-2\ln L)$ at $\sigma=0$ \\
+\midrule
+0    & 0.025 & 0.036 & 0.015 & 0.024 & 18.5 / 18.0 \\
+0.03 & 0.020 & 0.036 & 0.015 & 0.023 & 7.2 / 7.4 \\
+0.06 & 0.005 & 0.030 & 0.005 & 0.019 & 0.3 / 0.5 \\
+\bottomrule
+\end{tabular}
+\caption{Profile-likelihood fit of the per-cycle $\sigma$ to 297 single-copy wells. 0.03 is
+the paper's high-copy Cq SD. The S3B noise ($\sigma=0.051$, cycles 1--20) has
+$\Delta(-2\ln L)=12.7$--$14.8$ and is excluded by the authors' own data.}
+\label{tab:fit}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{\figdir/fig_fit_experiment.png}
+\caption{Left: experimental single-copy Cq histogram against the model at $\sigma=0$, the
+best fit $\sigma=0.015$ and the excluded value $\sigma=0.035$ (noise in every cycle,
+measurement sd 0.03). Right: profile likelihood.}
+\label{fig:fit}
+\end{figure}
+
+The upper bound is robust to the measurement-noise assumption; whether $\sigma>0$ is
+preferred is not. Any well-to-well broadening (threshold or baseline variation, a static
+per-well spread of $\AEf$) is degenerate with $\sigma$ in the width, so the preference for
+$\sigma\approx0.015$--$0.02$ at measurement sd 0.03 is not evidence for per-cycle fluctuations
+specifically.
+
+\paragraph{Wells needed.} If the truth is $\sigma=0$, the expected likelihood-ratio statistic
+against $\sigma$ with $N$ wells is $2N\,\mathrm{KL}\p{p_0\,\|\,p_\sigma}$, with the shift
+profiled out. Setting it to $3.84$ gives the number of single-copy wells needed to exclude
+$\sigma$ at 95\% (Fig.~\ref{fig:wells}). For $\AEf=0.959$ and 297 wells the expected bound is
+$\sigma\approx0.012$ (every cycle) to $0.017$ (cycles 1--20). The observed bounds are looser,
+$0.023$ and $0.036$, because the data are slightly wider than the $\sigma=0$ model.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.7\textwidth]{\figdir/fig_wells_needed.png}
+\caption{Single-copy wells needed to exclude a per-cycle $\sigma$ at 95\% when the truth is
+$\sigma=0$ (measurement sd 0.03). Values above $\sim10^4$ are limited by the Monte Carlo noise
+of the $5\times10^5$-run histograms.}
+\label{fig:wells}
+\end{figure}
+
+%======================================================================
+\section{Summary: how accurate is AE?}
+%======================================================================
+
+\begin{enumerate}
+    \item \textbf{The mean of AE barely enters the peak pattern.} Peak~4 is at $+1$ cycle for
+          any $\AEf$, and $\Delta_{2,3}$ change by $c(\AEf)\,\delta\AEf\approx0.5\%$ for the quoted
+          $\delta\AEf=0.006$. The mean is set by the dilution series, not by the peaks.
+    \item \textbf{The peaks bound the per-cycle, per-well fluctuation of AE.} The four-peak
+          structure returns for $\sigma\lesssim0.006$--$0.011$ (peak~3) and peak~4 survives to
+          $\sigma\approx0.04$. With the authors' 297 single-copy wells the actual 95\% bound is
+          $\sigma\lesssim0.02$--$0.036$, i.e.\ $\AEf$ within roughly $\pm0.04$--$0.07$ of
+          $0.959$ cycle to cycle. Fig.~S3B's $\sigma=0.051$ is excluded, but ``no physically
+          plausible fluctuation'' is not shown.
+    \item \textbf{Fluctuations common to a plate are unconstrained.} The simulations draw noise
+          independently per well. Thermocycler drift shared by all wells of a plate shifts the
+          histogram without broadening it.
+    \item \textbf{$\AEf=0.8$.} There are no four peaks to return to: the side peaks are
+          shoulders already at $\sigma=0$. Noise only adds width to an intrinsic std of
+          $0.72$, so excluding a given $\sigma$ takes $10$--$30\times$ more single-copy wells
+          than at $\AEf=0.959$. With 297 wells the expected 95\% bound is $\sigma\approx0.036$
+          (noise in every cycle) or above $0.05$ (cycles 1--20), against $0.012$--$0.017$ at
+          $\AEf=0.959$.
+\end{enumerate}
+
+\end{document}
